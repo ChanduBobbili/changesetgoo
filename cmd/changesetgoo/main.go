@@ -44,7 +44,7 @@ func main() {
 			return
 		}
 
-		tagCmd := exec.Command("git", "tag", tagName)
+		tagCmd := exec.Command("git", "tag", "-a", tagName, "-m", "release "+tagName)
 		tagCmd.Stdout = os.Stdout
 		tagCmd.Stderr = os.Stderr
 		if err := tagCmd.Run(); err != nil {
@@ -109,7 +109,7 @@ func main() {
 			return
 		}
 
-		tagCmd := exec.Command("git", "tag", tagName)
+		tagCmd := exec.Command("git", "tag", "-a", tagName, "-m", "release "+tagName)
 		tagCmd.Stdout = os.Stdout
 		tagCmd.Stderr = os.Stderr
 		if err := tagCmd.Run(); err != nil {
