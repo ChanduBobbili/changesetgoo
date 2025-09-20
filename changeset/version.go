@@ -12,7 +12,6 @@ import (
 )
 
 // GetLatestVersion reads CHANGELOG.md and returns the latest semantic version
-// GetLatestVersion reads CHANGELOG.md and returns the latest semantic version
 func GetLatestVersion() (string, error) {
 	data, err := os.ReadFile("CHANGELOG.md")
 	if err != nil {
