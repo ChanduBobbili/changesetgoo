@@ -16,11 +16,12 @@ A lightweight Go-based CLI for managing **semantic versioning** and **changelogs
 * 📝 Merge changesets into a single `CHANGELOG.md`.
 * 🔖 Auto-bump versions (`semver` rules applied).
 * 🏷️ Create semantic Git tags (local only, no push).
+* 🚀 Publish workflow: apply changesets, bump version, update changelog, commit, tag, and optionally push.
 * ⚡ Written in Go — single binary, no Node.js required.
 
 ---
 
-## 🚀 Installation
+## 📦 Installation
 
 You can install the CLI globally using `go install`:
 
@@ -29,15 +30,20 @@ go install github.com/ChanduBobbili/changesetgoo/cmd/changesetgoo@latest
 ```
 
 This will place the `changesetgoo` binary into your `$GOPATH/bin` (make sure it’s in your `$PATH`).
+Adding the path in `.bashrc` OR `.zshrc`
+```sh
+export GOPATH="$HOME/go"
+export PATH="$GOPATH/bin:$PATH"
+```
 
 ---
 
-## 📖 Usage
+## ⚡ Usage
 
 After installing, you can run:
 
 ```sh
-changesetgoo [command]
+changesetgoo <command> [flags]
 ```
 
 ### Commands
@@ -70,10 +76,8 @@ changesetgoo version
 ```
 
 * Reads all `.changeset/*.md` files.
-* Calculates the **highest-priority bump**:
-
-  * `major` > `minor` > `patch`.
-* Updates `CHANGELOG.md` with merged notes.
+* Calculates the **highest-priority bump** (`major` > `minor` > `patch`).
+* Updates the changelog file with merged notes (`CHANGELOG.md` by default).
 * Deletes temporary `.changeset/*.md` files.
 
 Example:
@@ -100,6 +104,59 @@ Example:
 > changesetgoo tag
 ✅ Git tag v1.2.0 created
 ```
+
+---
+
+#### 4. Publish a release
+
+```sh
+changesetgoo publish [--yes] [--push] [--changelog <path>]
+```
+
+* Previews the next version bump and pending changes.
+* Confirms release (or skips confirmation with `--yes`).
+* Applies changesets, bumps version, updates changelog.
+* Commits changes with a release message.
+* Creates a Git tag.
+* Optionally pushes commits and tags with `--push`.
+
+Example:
+
+```sh
+> changesetgoo publish --yes --push --changelog ./docs/RELEASE_NOTES.md
+✅ Version bumped: v1.2.0
+✅ Committed release changes
+✅ Git tag v1.2.0 created
+🎉 Published: v1.2.0 (pushed to remote)
+```
+
+---
+
+## 🌍 Global Flags
+
+| Flag                 | Description                                                       |
+| -------------------- | ----------------------------------------------------------------- |
+| `--yes`              | Auto-confirm publish without prompting                            |
+| `--push`             | Push commits and tags to remote after publish                     |
+| `--changelog <path>` | Use a custom changelog file instead of the default `CHANGELOG.md` |
+
+---
+
+## 🔄 Exit Codes
+
+| Code | Meaning                                             |
+| ---- | --------------------------------------------------- |
+| `0`  | Success                                             |
+| `1`  | General error (unexpected failure)                  |
+| `2`  | Invalid command or usage error                      |
+| `3`  | Git-related error (commit/tag/push failure)         |
+
+---
+
+## 📝 Changelog
+
+View the changelog:
+[CHANGELOG.md](./CHANGELOG.md)
 
 ---
 
