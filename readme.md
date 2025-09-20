@@ -77,7 +77,7 @@ changesetgoo version
 
 * Reads all `.changeset/*.md` files.
 * Calculates the **highest-priority bump** (`major` > `minor` > `patch`).
-* Updates the changelog file with merged notes (`CHANGELOG.md` by default).
+* Updates the changelog file with merged notes.
 * Deletes temporary `.changeset/*.md` files.
 
 Example:
@@ -110,7 +110,7 @@ Example:
 #### 4. Publish a release
 
 ```sh
-changesetgoo publish [--yes] [--push] [--changelog <path>]
+changesetgoo publish [--yes] [--push]
 ```
 
 * Previews the next version bump and pending changes.
@@ -123,7 +123,7 @@ changesetgoo publish [--yes] [--push] [--changelog <path>]
 Example:
 
 ```sh
-> changesetgoo publish --yes --push --changelog ./docs/RELEASE_NOTES.md
+> changesetgoo publish --yes --push
 ✅ Version bumped: v1.2.0
 ✅ Committed release changes
 ✅ Git tag v1.2.0 created
@@ -138,7 +138,6 @@ Example:
 | -------------------- | ----------------------------------------------------------------- |
 | `--yes`              | Auto-confirm publish without prompting                            |
 | `--push`             | Push commits and tags to remote after publish                     |
-| `--changelog <path>` | Use a custom changelog file instead of the default `CHANGELOG.md` |
 
 ---
 

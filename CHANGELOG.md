@@ -1,3 +1,9 @@
+## 1.1.1
+
+### Patch Changes
+
+- Added flag to show the installed version
+
 ## 1.1.0
 
 ### Minor Changes

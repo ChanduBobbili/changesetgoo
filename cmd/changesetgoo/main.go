@@ -1,35 +1,47 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 
 	"github.com/ChanduBobbili/changesetgoo/changeset"
+	"github.com/ChanduBobbili/changesetgoo/constants"
 	"github.com/ChanduBobbili/changesetgoo/enums"
 )
 
 var (
-	flagYes       bool
-	flagPush      bool
-	flagChangelog string
+	flagYes  bool
+	flagPush bool
 )
 
 func main() {
-	// Global flags (parsed before subcommand)
-	flag.BoolVar(&flagYes, "yes", false, "Auto-confirm publish without prompting")
-	flag.BoolVar(&flagPush, "push", false, "Auto-push commits and tags after publish")
-	flag.StringVar(&flagChangelog, "changelog", "CHANGELOG.md", "Path to changelog file")
-	flag.Parse()
+	// Default values for flags
+	flagYes = false
+	flagPush = false
 
-	args := flag.Args()
+	args := os.Args[1:]
 	if len(args) < 1 {
 		printUsage()
 		os.Exit(1)
 	}
 
+	// First arg is the subcommand
 	cmd := args[0]
+
+	// Parse flags that appear after the subcommand
+	for _, arg := range args[1:] {
+		switch arg {
+		case "--push":
+			flagPush = true
+		case "--yes":
+			flagYes = true
+		default:
+			// If it's unknown, ignore or handle positional args
+		}
+	}
+
+	// Handle subcommands
 	switch cmd {
 	case "add":
 		runAdd()
@@ -39,11 +51,13 @@ func main() {
 		runTag()
 	case "publish":
 		runPublish()
+	case "--version", "-v":
+		printCLIVersion()
 	case "help", "--help", "-h":
 		printUsage()
 		os.Exit(0)
 	default:
-		fmt.Printf("Unknown command: %s\n", args[0])
+		fmt.Printf("Unknown command: %s\n", cmd)
 		printUsage()
 		os.Exit(2)
 	}
@@ -186,8 +200,12 @@ func printUsage() {
 	fmt.Println("  tag         Create a git tag for the latest version")
 	fmt.Println("  publish     Bump version, commit, and create a tag")
 	fmt.Println("  help        Show this help message")
+	fmt.Println("  --version, -v    Show changesetgoo CLI version")
 	fmt.Println("\nFlags:")
 	fmt.Println("  --yes            Auto-confirm publish without prompting")
 	fmt.Println("  --push           Auto-push commits and tags after publish")
-	fmt.Println("  --changelog PATH Path to changelog file (default: CHANGELOG.md)")
+}
+
+func printCLIVersion() {
+	fmt.Println("changesetgoo", constants.CliVersion)
 }
