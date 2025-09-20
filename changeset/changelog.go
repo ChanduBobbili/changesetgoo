@@ -13,32 +13,39 @@ import (
 // ApplyChangesets merges all temp markdowns into CHANGELOG.md and clears .changesets
 func ApplyChangesets() (string, error) {
 	files, err := os.ReadDir(constants.ChangesDir)
-	if err != nil {
-		return "", fmt.Errorf("no changesets found")
-	}
-	if len(files) == 0 {
+	if err != nil || len(files) == 0 {
 		return "", fmt.Errorf("no changesets found")
 	}
 
-	// Track bump types and their messages separately
+	majors, minors, patches := categorizeChangesets(files)
+	if len(majors)+len(minors)+len(patches) == 0 {
+		return "", fmt.Errorf("no valid bump types found in changesets")
+	}
+
+	bumpType := determineBumpType(majors, minors, patches)
+
+	current, _ := GetLatestVersion()
+	newVersion, _ := BumpVersion(current, bumpType)
+
+	if err := updateChangelog(newVersion, majors, minors, patches); err != nil {
+		return "", err
+	}
+
+	if err := cleanupChangesets(files); err != nil {
+		return "", err
+	}
+
+	return newVersion, nil
+}
+
+func categorizeChangesets(files []os.DirEntry) ([]string, []string, []string) {
 	var majors, minors, patches []string
+
 	for _, file := range files {
 		if file.IsDir() || !strings.HasSuffix(file.Name(), ".md") {
 			continue
 		}
-
-		data, _ := os.ReadFile(filepath.Join(constants.ChangesDir, file.Name()))
-		lines := strings.Split(string(data), "\n")
-
-		// ✅ Take only the first non-empty line as description
-		var desc string
-		for _, line := range lines {
-			clean := strings.TrimSpace(strings.TrimPrefix(line, "###"))
-			if clean != "" {
-				desc = clean
-				break
-			}
-		}
+		desc := extractDescription(filepath.Join(constants.ChangesDir, file.Name()))
 		if desc == "" {
 			continue
 		}
@@ -54,24 +61,34 @@ func ApplyChangesets() (string, error) {
 		}
 	}
 
-	// Decide bump type based on precedence
-	var bumpType enums.ReleaseType
+	return majors, minors, patches
+}
+
+func extractDescription(path string) string {
+	data, _ := os.ReadFile(path)
+	lines := strings.Split(string(data), "\n")
+
+	for _, line := range lines {
+		clean := strings.TrimSpace(strings.TrimPrefix(line, "###"))
+		if clean != "" {
+			return clean
+		}
+	}
+	return ""
+}
+
+func determineBumpType(majors, minors, patches []string) enums.ReleaseType {
 	switch {
 	case len(majors) > 0:
-		bumpType = enums.Major
+		return enums.Major
 	case len(minors) > 0:
-		bumpType = enums.Minor
-	case len(patches) > 0:
-		bumpType = enums.Patch
+		return enums.Minor
 	default:
-		return "", fmt.Errorf("no valid bump types found in changesets")
+		return enums.Patch
 	}
+}
 
-	// Get current version & bump
-	current, _ := GetLatestVersion()
-	newVersion, _ := BumpVersion(current, bumpType)
-
-	// Build changelog entry
+func updateChangelog(newVersion string, majors, minors, patches []string) error {
 	var changelog strings.Builder
 	changelog.WriteString(fmt.Sprintf("## %s\n\n", newVersion))
 
@@ -91,20 +108,18 @@ func ApplyChangesets() (string, error) {
 		changelog.WriteString("\n\n")
 	}
 
-	// Prepend changelog
 	oldLog, _ := os.ReadFile("CHANGELOG.md")
 	newLog := changelog.String() + string(oldLog)
+	return os.WriteFile("CHANGELOG.md", []byte(newLog), 0644)
+}
 
-	if err := os.WriteFile("CHANGELOG.md", []byte(newLog), 0644); err != nil {
-		return "", err
-	}
-
-	// Cleanup changesets
+func cleanupChangesets(files []os.DirEntry) error {
 	for _, file := range files {
 		if !file.IsDir() && strings.HasSuffix(file.Name(), ".md") {
-			os.Remove(filepath.Join(constants.ChangesDir, file.Name()))
+			if err := os.Remove(filepath.Join(constants.ChangesDir, file.Name())); err != nil {
+				return err
+			}
 		}
 	}
-
-	return newVersion, nil
+	return nil
 }

@@ -58,6 +58,5 @@ func InteractiveAdd() error {
 		return err
 	}
 
-	fmt.Println("✅ Changeset added")
 	return nil
 }

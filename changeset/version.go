@@ -60,12 +60,24 @@ func BumpVersion(current string, releaseType enums.ReleaseType) (string, error) 
 }
 
 // CalculateNextVersion inspects pending changesets and returns the highest bump type + next version
-func CalculateNextVersion() (nextVersion string, bumpType enums.ReleaseType, err error) {
+func CalculateNextVersion() (string, enums.ReleaseType, error) {
 	files, err := os.ReadDir(constants.ChangesDir)
-	if err != nil {
+	if err != nil || len(files) == 0 {
 		return "", "", fmt.Errorf("no changesets found")
 	}
 
+	bumpType, err := detectBumpType(files)
+	if err != nil {
+		return "", "", err
+	}
+
+	current, _ := GetLatestVersion()
+	nextVersion, _ := BumpVersion(current, bumpType)
+
+	return nextVersion, bumpType, nil
+}
+
+func detectBumpType(files []os.DirEntry) (enums.ReleaseType, error) {
 	hasMajor, hasMinor, hasPatch := false, false, false
 
 	for _, file := range files {
@@ -83,17 +95,14 @@ func CalculateNextVersion() (nextVersion string, bumpType enums.ReleaseType, err
 		}
 	}
 
-	if hasMajor {
-		bumpType = enums.Major
-	} else if hasMinor {
-		bumpType = enums.Minor
-	} else if hasPatch {
-		bumpType = enums.Patch
-	} else {
-		return "", "", fmt.Errorf("no valid bump types found in changesets")
+	switch {
+	case hasMajor:
+		return enums.Major, nil
+	case hasMinor:
+		return enums.Minor, nil
+	case hasPatch:
+		return enums.Patch, nil
+	default:
+		return "", fmt.Errorf("no valid bump types found in changesets")
 	}
-
-	current, _ := GetLatestVersion()
-	nextVersion, _ = BumpVersion(current, bumpType)
-	return nextVersion, bumpType, nil
 }
