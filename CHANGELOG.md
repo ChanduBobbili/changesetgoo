@@ -1,3 +1,10 @@
+## 1.1.0
+
+### Minor Changes
+
+- Added the flag for auto-confirm, push, custom file path for CHANGELG.md
+- Checked the gocyclo report && improved the code.
+
 ## 1.0.0
 
 ### Major Changes
