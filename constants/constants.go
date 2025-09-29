@@ -1,4 +1,4 @@
 package constants
 
 const ChangesDir = ".changesets"
-const CliVersion = "v1.1.1"
+const CliVersion = "v1.2.0"

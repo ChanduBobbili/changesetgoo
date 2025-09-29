@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
+	"strings"
 
 	"github.com/ChanduBobbili/changesetgoo/changeset"
 	"github.com/ChanduBobbili/changesetgoo/constants"
@@ -170,7 +172,8 @@ func commitChanges(tagName string) {
 }
 
 func createTag(tagName string) {
-	if err := runCmd("git", "tag", "-a", tagName, "-m", "release "+tagName); err != nil {
+	message := getChangelogForTag(tagName)
+	if err := runCmd("git", "tag", "-a", tagName, "-m", message); err != nil {
 		fmt.Println("⚠️ Failed to create tag:", err)
 		os.Exit(3)
 	}
@@ -190,6 +193,27 @@ func runCmd(name string, args ...string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+func getChangelogForTag(tagName string) string {
+	// tagName is "v1.2.3", version is "1.2.3"
+	version := strings.TrimPrefix(tagName, "v")
+	baseMessage := "Release " + tagName
+
+	data, err := os.ReadFile("CHANGELOG.md")
+	if err != nil {
+		return baseMessage // Return base message if changelog can't be read
+	}
+
+	// (?s) allows . to match newlines. Stop at the next ## or end of file.
+	re := regexp.MustCompile(fmt.Sprintf(`(?s)##\s+%s\s*\n(.*?)(?:\n##\s|\z)`, regexp.QuoteMeta(version)))
+	matches := re.FindStringSubmatch(string(data))
+
+	if len(matches) > 1 {
+		return baseMessage + "\n\n" + strings.TrimSpace(matches[1])
+	}
+
+	return baseMessage // Return base message if no specific changelog is found
 }
 
 func printUsage() {

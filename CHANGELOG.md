@@ -1,3 +1,9 @@
+## 1.2.0
+
+### Minor Changes
+
+- Added changelog as Git Tag Message
+
 ## 1.1.1
 
 ### Patch Changes
