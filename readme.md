@@ -1,7 +1,6 @@
 # changesetgoo
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/ChanduBobbili/changesetgoo.svg)](https://pkg.go.dev/github.com/ChanduBobbili/changesetgoo)
-[![Go Report Card](https://goreportcard.com/badge/github.com/ChanduBobbili/changesetgoo)](https://goreportcard.com/report/github.com/ChanduBobbili/changesetgoo)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 A lightweight Go-based CLI for managing **semantic versioning** and **changelogs**, inspired by [Changesets](https://github.com/changesets/changesets).
