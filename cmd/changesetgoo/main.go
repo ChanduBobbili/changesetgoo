@@ -5,10 +5,10 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"runtime/debug"
 	"strings"
 
 	"github.com/ChanduBobbili/changesetgoo/changeset"
-	"github.com/ChanduBobbili/changesetgoo/constants"
 	"github.com/ChanduBobbili/changesetgoo/enums"
 )
 
@@ -231,5 +231,30 @@ func printUsage() {
 }
 
 func printCLIVersion() {
-	fmt.Println("changesetgoo", constants.CliVersion)
+	// Read build information embedded in the binary
+	if info, ok := debug.ReadBuildInfo(); ok {
+		// If compiled via 'go install @v1.2.3', this will be populated
+		if info.Main.Version != "(devel)" && info.Main.Version != "" {
+			fmt.Printf("CLI Tool Version: %s\n", info.Main.Version)
+			return
+		}
+
+		// Fallback: Look for the local Git commit hash embedded during 'go build'
+		var revision string
+		var vcsTime string
+		for _, setting := range info.Settings {
+			if setting.Key == "vcs.revision" {
+				revision = setting.Value
+			}
+			if setting.Key == "vcs.time" {
+				vcsTime = setting.Value
+			}
+		}
+
+		if revision != "" {
+			fmt.Printf("CLI Tool Local Build (Commit: %s, Built: %s)\n", revision[:7], vcsTime)
+			return
+		}
+	}
+	fmt.Println("changesetgoo: invicible")
 }
