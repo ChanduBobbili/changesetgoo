@@ -6,18 +6,18 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ChanduBobbili/changesetgoo/constants"
+	"github.com/ChanduBobbili/changesetgoo/config"
 	"github.com/ChanduBobbili/changesetgoo/enums"
 )
 
 // ApplyChangesets merges all temp markdowns into CHANGELOG.md and clears .changesets
-func ApplyChangesets() (string, error) {
-	files, err := os.ReadDir(constants.ChangesDir)
+func ApplyChangesets(cfg config.Config) (string, error) {
+	files, err := os.ReadDir(cfg.ChangesDir)
 	if err != nil || len(files) == 0 {
 		return "", fmt.Errorf("no changesets found")
 	}
 
-	majors, minors, patches := categorizeChangesets(files)
+	majors, minors, patches := categorizeChangesets(files, cfg.ChangesDir)
 	if len(majors)+len(minors)+len(patches) == 0 {
 		return "", fmt.Errorf("no valid bump types found in changesets")
 	}
@@ -27,25 +27,25 @@ func ApplyChangesets() (string, error) {
 	current, _ := GetLatestVersion()
 	newVersion, _ := BumpVersion(current, bumpType)
 
-	if err := updateChangelog(newVersion, majors, minors, patches); err != nil {
+	if err := updateChangelog(newVersion, majors, minors, patches, cfg); err != nil {
 		return "", err
 	}
 
-	if err := cleanupChangesets(files); err != nil {
+	if err := cleanupChangesets(files, cfg.ChangesDir); err != nil {
 		return "", err
 	}
 
 	return newVersion, nil
 }
 
-func categorizeChangesets(files []os.DirEntry) ([]string, []string, []string) {
+func categorizeChangesets(files []os.DirEntry, changesDir string) ([]string, []string, []string) {
 	var majors, minors, patches []string
 
 	for _, file := range files {
 		if file.IsDir() || !strings.HasSuffix(file.Name(), ".md") {
 			continue
 		}
-		desc := extractDescription(filepath.Join(constants.ChangesDir, file.Name()))
+		desc := extractDescription(filepath.Join(changesDir, file.Name()))
 		if desc == "" {
 			continue
 		}
@@ -88,9 +88,13 @@ func determineBumpType(majors, minors, patches []string) enums.ReleaseType {
 	}
 }
 
-func updateChangelog(newVersion string, majors, minors, patches []string) error {
+func updateChangelog(newVersion string, majors, minors, patches []string, cfg config.Config) error {
 	var changelog strings.Builder
-	changelog.WriteString(fmt.Sprintf("## %s\n\n", newVersion))
+	heading := config.Render(cfg.ChangelogTemplate, map[string]string{"version": newVersion})
+	if strings.TrimSpace(heading) == "" {
+		heading = fmt.Sprintf("## %s", newVersion)
+	}
+	changelog.WriteString(heading + "\n\n")
 
 	if len(majors) > 0 {
 		changelog.WriteString("### Major Changes\n\n")
@@ -113,10 +117,10 @@ func updateChangelog(newVersion string, majors, minors, patches []string) error 
 	return os.WriteFile("CHANGELOG.md", []byte(newLog), 0644)
 }
 
-func cleanupChangesets(files []os.DirEntry) error {
+func cleanupChangesets(files []os.DirEntry, changesDir string) error {
 	for _, file := range files {
 		if !file.IsDir() && strings.HasSuffix(file.Name(), ".md") {
-			if err := os.Remove(filepath.Join(constants.ChangesDir, file.Name())); err != nil {
+			if err := os.Remove(filepath.Join(changesDir, file.Name())); err != nil {
 				return err
 			}
 		}

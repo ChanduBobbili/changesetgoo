@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/ChanduBobbili/changesetgoo/changeset"
+	"github.com/ChanduBobbili/changesetgoo/config"
 	"github.com/ChanduBobbili/changesetgoo/constants"
 	"github.com/ChanduBobbili/changesetgoo/enums"
 )
@@ -43,16 +44,22 @@ func main() {
 		}
 	}
 
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️ Failed to load config: %v. Using defaults.\n", err)
+		cfg = config.Defaults()
+	}
+
 	// Handle subcommands
 	switch cmd {
 	case "add":
-		runAdd()
+		runAdd(cfg)
 	case "version":
-		runVersion()
+		runVersion(cfg)
 	case "tag":
-		runTag()
+		runTag(cfg)
 	case "publish":
-		runPublish()
+		runPublish(cfg)
 	case "--version", "-v":
 		printCLIVersion()
 	case "help", "--help", "-h":
@@ -65,8 +72,8 @@ func main() {
 	}
 }
 
-func runAdd() {
-	if err := changeset.InteractiveAdd(); err != nil {
+func runAdd(cfg config.Config) {
+	if err := changeset.InteractiveAdd(cfg); err != nil {
 		fmt.Println("⚠️ Failed to add changeset:", err)
 		os.Exit(1)
 	}
@@ -74,24 +81,24 @@ func runAdd() {
 	os.Exit(0)
 }
 
-func runVersion() {
-	newVer, err := changeset.ApplyChangesets()
+func runVersion(cfg config.Config) {
+	newVer, err := changeset.ApplyChangesets(cfg)
 	if err != nil {
 		fmt.Println("⚠️", err)
 		os.Exit(1)
 	}
-	fmt.Printf("✅ Version bumped to v%s\n", newVer)
+	fmt.Printf("✅ Version bumped to %s%s\n", cfg.TagPrefix, newVer)
 	os.Exit(0)
 }
 
-func runTag() {
+func runTag(cfg config.Config) {
 	version, err := changeset.GetLatestVersion()
 	if err != nil {
 		fmt.Println("⚠️ Failed to get latest version:", err)
 		os.Exit(1)
 	}
 
-	tagName := "v" + version
+	tagName := cfg.TagPrefix + version
 	checkCmd := exec.Command("git", "tag", "--list", tagName)
 	out, _ := checkCmd.Output()
 	if string(out) != "" {
@@ -99,7 +106,7 @@ func runTag() {
 		os.Exit(0)
 	}
 
-	createTag(tagName)
+	createTag(tagName, cfg.TagPrefix)
 
 	if flagPush {
 		pushTags()
@@ -107,23 +114,23 @@ func runTag() {
 	os.Exit(0)
 }
 
-func runPublish() {
-	nextVer, bumpType, err := changeset.CalculateNextVersion()
+func runPublish(cfg config.Config) {
+	nextVer, bumpType, err := changeset.CalculateNextVersion(cfg)
 	if err != nil {
 		fmt.Println("⚠️", err)
 		os.Exit(1)
 	}
 
-	previewRelease(nextVer, bumpType)
+	previewRelease(nextVer, bumpType, cfg.TagPrefix)
 
 	if !flagYes {
 		confirmRelease()
 	}
 
-	tagName := bumpVersion()
-	commitChanges(tagName)
+	tagName := bumpVersion(cfg)
+	commitChanges(tagName, cfg)
 
-	createTag(tagName)
+	createTag(tagName, cfg.TagPrefix)
 
 	if flagPush {
 		pushTags()
@@ -133,11 +140,11 @@ func runPublish() {
 	os.Exit(0)
 }
 
-func previewRelease(nextVer string, bumpType enums.ReleaseType) {
+func previewRelease(nextVer string, bumpType enums.ReleaseType, tagPrefix string) {
 	fmt.Println("📦 Release preview")
 	fmt.Println("------------------")
 	fmt.Printf(" Pending bump : %s\n", bumpType)
-	fmt.Printf(" Next version : v%s\n\n", nextVer)
+	fmt.Printf(" Next version : %s%s\n\n", tagPrefix, nextVer)
 }
 
 func confirmRelease() {
@@ -150,29 +157,32 @@ func confirmRelease() {
 	}
 }
 
-func bumpVersion() string {
-	newVer, err := changeset.ApplyChangesets()
+func bumpVersion(cfg config.Config) string {
+	newVer, err := changeset.ApplyChangesets(cfg)
 	if err != nil {
 		fmt.Println("⚠️", err)
 		os.Exit(1)
 	}
-	tagName := "v" + newVer
+	tagName := cfg.TagPrefix + newVer
 	fmt.Printf("✅ Version bumped: %s\n", tagName)
 	return tagName
 }
 
-func commitChanges(tagName string) {
+func commitChanges(tagName string, cfg config.Config) {
+	version := strings.TrimPrefix(tagName, cfg.TagPrefix)
+	commitMessage := config.Render(cfg.CommitMessage, map[string]string{"tag": tagName, "version": version})
+
 	if err := runCmd("git", "add", "-A"); err != nil {
 		fmt.Println("⚠️ No changes to commit.")
-	} else if err := runCmd("git", "commit", "-m", fmt.Sprintf("chore 🚀: release %s", tagName)); err != nil {
+	} else if err := runCmd("git", "commit", "-m", commitMessage); err != nil {
 		fmt.Println("⚠️ No changes to commit.")
 	} else {
-		fmt.Printf("✅ Committed release changes: chore 🚀: release %s\n", tagName)
+		fmt.Printf("✅ Committed release changes: %s\n", commitMessage)
 	}
 }
 
-func createTag(tagName string) {
-	message := getChangelogForTag(tagName)
+func createTag(tagName string, tagPrefix string) {
+	message := getChangelogForTag(tagName, tagPrefix)
 	if err := runCmd("git", "tag", "-a", tagName, "-m", message); err != nil {
 		fmt.Println("⚠️ Failed to create tag:", err)
 		os.Exit(3)
@@ -195,9 +205,9 @@ func runCmd(name string, args ...string) error {
 	return cmd.Run()
 }
 
-func getChangelogForTag(tagName string) string {
-	// tagName is "v1.2.3", version is "1.2.3"
-	version := strings.TrimPrefix(tagName, "v")
+func getChangelogForTag(tagName string, tagPrefix string) string {
+	// tagName is prefix+version, version is semver only.
+	version := strings.TrimPrefix(tagName, tagPrefix)
 	baseMessage := "Release " + tagName
 
 	data, err := os.ReadFile("CHANGELOG.md")
