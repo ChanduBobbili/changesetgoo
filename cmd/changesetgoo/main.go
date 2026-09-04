@@ -16,12 +16,14 @@ import (
 var (
 	flagYes  bool
 	flagPush bool
+	flagCheck bool
 )
 
 func main() {
 	// Default values for flags
 	flagYes = false
 	flagPush = false
+	flagCheck = false
 
 	args := os.Args[1:]
 	if len(args) < 1 {
@@ -39,6 +41,8 @@ func main() {
 			flagPush = true
 		case "--yes":
 			flagYes = true
+		case "--check":
+			flagCheck = true
 		default:
 			// If it's unknown, ignore or handle positional args
 		}
@@ -58,6 +62,8 @@ func main() {
 		runVersion(cfg)
 	case "tag":
 		runTag(cfg)
+	case "status":
+		runStatus(cfg)
 	case "publish":
 		runPublish(cfg)
 	case "--version", "-v":
@@ -115,6 +121,22 @@ func runTag(cfg config.Config) {
 }
 
 func runPublish(cfg config.Config) {
+	if flagCheck {
+		passes, relevantFiles, err := changeset.CheckChangesetRequirement(cfg)
+		if err != nil {
+			fmt.Println("⚠️ Failed to validate changeset requirement:", err)
+			os.Exit(1)
+		}
+		if !passes {
+			fmt.Println("⚠️ Relevant changes detected but no pending changeset was found")
+			fmt.Println("Run: changesetgoo add")
+			for _, file := range relevantFiles {
+				fmt.Println("  -", file)
+			}
+			os.Exit(1)
+		}
+	}
+
 	nextVer, bumpType, err := changeset.CalculateNextVersion(cfg)
 	if err != nil {
 		fmt.Println("⚠️", err)
@@ -140,6 +162,30 @@ func runPublish(cfg config.Config) {
 
 	fmt.Printf("🎉 Published: %s\n", tagName)
 	os.Exit(0)
+}
+
+func runStatus(cfg config.Config) {
+	passes, relevantFiles, err := changeset.CheckChangesetRequirement(cfg)
+	if err != nil {
+		fmt.Println("⚠️ Failed to validate changeset requirement:", err)
+		os.Exit(1)
+	}
+
+	if passes && len(relevantFiles) == 0 {
+		fmt.Printf("✅ No changes matched changedFilePatterns against %s\n", cfg.BaseBranch)
+		os.Exit(0)
+	}
+	if passes {
+		fmt.Println("✅ Relevant changes detected and pending changesets are present")
+		os.Exit(0)
+	}
+
+	fmt.Println("⚠️ Relevant changes detected but no pending changeset was found")
+	fmt.Println("Run: changesetgoo add")
+	for _, file := range relevantFiles {
+		fmt.Println("  -", file)
+	}
+	os.Exit(1)
 }
 
 func previewRelease(nextVer string, bumpType enums.ReleaseType, tagPrefix string) {
@@ -234,12 +280,14 @@ func printUsage() {
 	fmt.Println("  add         Add a new changeset interactively")
 	fmt.Println("  version     Apply pending changesets and bump version")
 	fmt.Println("  tag         Create a git tag for the latest version")
+	fmt.Println("  status      Check changed files against changedFilePatterns")
 	fmt.Println("  publish     Bump version, commit, and create a tag")
 	fmt.Println("  help        Show this help message")
 	fmt.Println("  --version, -v    Show changesetgoo CLI version")
 	fmt.Println("\nFlags:")
 	fmt.Println("  --yes            Auto-confirm publish without prompting")
 	fmt.Println("  --push           Auto-push commits and tags after publish")
+	fmt.Println("  --check          Enforce changedFilePatterns changeset requirement")
 }
 
 func printCLIVersion() {
