@@ -1,8 +1,9 @@
 package changeset
 
 import (
-	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/ChanduBobbili/changesetgoo/config"
 	"github.com/ChanduBobbili/changesetgoo/enums"
+	"github.com/chzyer/readline"
 	"github.com/manifoldco/promptui"
 )
 
@@ -22,6 +24,10 @@ func PromptReleaseType() (enums.ReleaseType, error) {
 
 	_, result, err := prompt.Run()
 	if err != nil {
+		// Handle graceful shutdown for Ctrl+C and Ctrl+D
+		if errors.Is(err, promptui.ErrInterrupt) || errors.Is(err, promptui.ErrEOF) {
+			os.Exit(0)
+		}
 		return "", err
 	}
 
@@ -49,9 +55,22 @@ func InteractiveAdd(cfg config.Config) error {
 		return err
 	}
 
-	fmt.Print("Enter change description: ")
-	reader := bufio.NewReader(os.Stdin)
-	desc, _ := reader.ReadString('\n')
+	// Use readline directly to fix the multi-print pasting bug
+	rl, err := readline.New("Enter change description: ")
+	if err != nil {
+		return err
+	}
+	defer rl.Close()
+
+	desc, err := rl.Readline()
+	if err != nil {
+		// Handle graceful shutdown for Ctrl+C and Ctrl+D during text input
+		if errors.Is(err, readline.ErrInterrupt) || errors.Is(err, io.EOF) {
+			os.Exit(0)
+		}
+		return err
+	}
+
 	desc = strings.TrimSpace(desc)
 
 	if err := AddChangeset(bump, desc, cfg); err != nil {
