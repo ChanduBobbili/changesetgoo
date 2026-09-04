@@ -27,8 +27,10 @@ func ApplyChangesets(cfg config.Config) (string, error) {
 	current, _ := GetLatestVersion()
 	newVersion, _ := BumpVersion(current, bumpType)
 
-	if err := updateChangelog(newVersion, majors, minors, patches, cfg); err != nil {
-		return "", err
+	if cfg.Changelog.Enabled {
+		if err := updateChangelog(newVersion, majors, minors, patches, cfg); err != nil {
+			return "", err
+		}
 	}
 
 	if err := cleanupChangesets(files, cfg.ChangesDir); err != nil {
@@ -90,7 +92,7 @@ func determineBumpType(majors, minors, patches []string) enums.ReleaseType {
 
 func updateChangelog(newVersion string, majors, minors, patches []string, cfg config.Config) error {
 	var changelog strings.Builder
-	heading := config.Render(cfg.ChangelogTemplate, map[string]string{"version": newVersion})
+	heading := config.Render(cfg.Changelog.Template, map[string]string{"version": newVersion})
 	if strings.TrimSpace(heading) == "" {
 		heading = fmt.Sprintf("## %s", newVersion)
 	}

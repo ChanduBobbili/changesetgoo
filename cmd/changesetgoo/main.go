@@ -128,7 +128,9 @@ func runPublish(cfg config.Config) {
 	}
 
 	tagName := bumpVersion(cfg)
-	commitChanges(tagName, cfg)
+	if cfg.Commit.Enabled {
+		commitChanges(tagName, cfg)
+	}
 
 	createTag(tagName, cfg.TagPrefix)
 
@@ -170,7 +172,7 @@ func bumpVersion(cfg config.Config) string {
 
 func commitChanges(tagName string, cfg config.Config) {
 	version := strings.TrimPrefix(tagName, cfg.TagPrefix)
-	commitMessage := config.Render(cfg.CommitMessage, map[string]string{"tag": tagName, "version": version})
+	commitMessage := config.Render(cfg.Commit.Message, map[string]string{"tag": tagName, "version": version})
 
 	if err := runCmd("git", "add", "-A"); err != nil {
 		fmt.Println("⚠️ No changes to commit.")
