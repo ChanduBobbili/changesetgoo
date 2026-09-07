@@ -11,6 +11,7 @@ import (
 
 	"github.com/ChanduBobbili/changesetgoo/config"
 	"github.com/ChanduBobbili/changesetgoo/enums"
+	"github.com/ChanduBobbili/changesetgoo/utils/git"
 	"github.com/chzyer/readline"
 	"github.com/manifoldco/promptui"
 )
@@ -49,7 +50,15 @@ func AddChangeset(releaseType enums.ReleaseType, message string, cfg config.Conf
 }
 
 // InteractiveAdd allows user to input bump type and description
-func InteractiveAdd(cfg config.Config) error {
+func InteractiveAdd(gitRepo *git.GitRepository, cfg config.Config) error {
+	hasChanges, err := HasChangesForChangeset(gitRepo, cfg)
+	if err != nil {
+		return err
+	}
+	if !hasChanges {
+		return fmt.Errorf("no changes detected; nothing to add a changeset for")
+	}
+
 	bump, err := PromptReleaseType()
 	if err != nil {
 		return err
