@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ChanduBobbili/changesetgoo/constants"
+	"github.com/ChanduBobbili/changesetgoo/config"
 	"github.com/ChanduBobbili/changesetgoo/enums"
 	"github.com/chzyer/readline"
 	"github.com/manifoldco/promptui"
@@ -34,22 +34,22 @@ func PromptReleaseType() (enums.ReleaseType, error) {
 	return enums.ReleaseType(result), nil
 }
 
-// AddChangeset creates a temp markdown file for the change
-func AddChangeset(releaseType enums.ReleaseType, message string) error {
-	if err := os.MkdirAll(constants.ChangesDir, 0755); err != nil {
+// AddChangeset creates a temp markdown file for the change.
+func AddChangeset(releaseType enums.ReleaseType, message string, cfg config.Config) error {
+	if err := os.MkdirAll(cfg.ChangesDir, 0755); err != nil {
 		return err
 	}
 
 	filename := fmt.Sprintf("%s-%d.md", releaseType, time.Now().UnixNano())
-	filePath := filepath.Join(constants.ChangesDir, filename)
+	filePath := filepath.Join(cfg.ChangesDir, filename)
 
-	// Only write the plain description (no headings, no "###")
+	// Only write the plain description (no headings, no "###").
 	content := strings.TrimSpace(message) + "\n"
 	return os.WriteFile(filePath, []byte(content), 0644)
 }
 
 // InteractiveAdd allows user to input bump type and description
-func InteractiveAdd() error {
+func InteractiveAdd(cfg config.Config) error {
 	bump, err := PromptReleaseType()
 	if err != nil {
 		return err
@@ -73,7 +73,7 @@ func InteractiveAdd() error {
 
 	desc = strings.TrimSpace(desc)
 
-	if err := AddChangeset(bump, desc); err != nil {
+	if err := AddChangeset(bump, desc, cfg); err != nil {
 		return err
 	}
 

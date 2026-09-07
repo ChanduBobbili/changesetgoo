@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ChanduBobbili/changesetgoo/constants"
+	"github.com/ChanduBobbili/changesetgoo/config"
 	"github.com/ChanduBobbili/changesetgoo/enums"
 )
 
@@ -60,8 +60,8 @@ func BumpVersion(current string, releaseType enums.ReleaseType) (string, error) 
 }
 
 // CalculateNextVersion inspects pending changesets and returns the highest bump type + next version
-func CalculateNextVersion() (string, enums.ReleaseType, error) {
-	files, err := os.ReadDir(constants.ChangesDir)
+func CalculateNextVersion(cfg config.Config) (string, enums.ReleaseType, error) {
+	files, err := os.ReadDir(cfg.ChangesDir)
 	if err != nil || len(files) == 0 {
 		return "", "", fmt.Errorf("no changesets found")
 	}
