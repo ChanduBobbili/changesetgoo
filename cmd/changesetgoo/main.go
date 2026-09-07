@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 
@@ -57,15 +56,13 @@ func main() {
 	case "version":
 		runVersion(cfg)
 	case "tag":
-		runTag(cfg, *flagPush)
+		runTag(cfg, gitRepo, *flagPush)
 	case "status":
 		runStatus(cfg)
 	case "publish":
-		runPublish(cfg, *flagYes, *flagPush, *flagCheck)
+		runPublish(cfg, gitRepo, *flagYes, *flagPush, *flagCheck)
 	case "--version", "-v":
 		printCLIVersion()
-	case "help", "--help", "-h":
-		exits.WithInfo(getUsage())
 	default:
 		fmt.Printf("Unknown command: %s\n", cmd)
 		exits.WithUsageError(getUsage())
@@ -76,6 +73,7 @@ func runAdd(cfg config.Config) {
 	if err := changeset.InteractiveAdd(cfg); err != nil {
 		exits.WithError("⚠️ Failed to add changeset: %v", err)
 	}
+
 	exits.WithSuccess("✅ Changeset added")
 }
 
@@ -84,34 +82,34 @@ func runVersion(cfg config.Config) {
 	if err != nil {
 		exits.WithError("⚠️ %v", err)
 	}
+
 	exits.WithSuccess("✅ Version bumped to %s%s", cfg.TagPrefix, newVer)
 }
 
-func runTag(cfg config.Config, flagPush bool) {
+func runTag(cfg config.Config, gitRepo *git.GitRepository, flagPush bool) {
 	version, err := changeset.GetLatestVersion()
 	if err != nil {
 		exits.WithError("⚠️ Failed to get latest version: %v", err)
 	}
 
 	tagName := cfg.TagPrefix + version
-	checkCmd := exec.Command("git", "tag", "--list", tagName)
-	out, err := checkCmd.Output()
-	if err != nil {
-		exits.WithError("⚠️ Failed to check existing tags: %v", err)
-	}
-	if string(out) != "" {
+
+	if tagExists, err := gitRepo.CheckTagExists(tagName); err != nil {
+		exits.WithError("⚠️ Failed to check tag existence: %v", err)
+	} else if tagExists {
 		exits.WithInfo("⚠️ Tag %s already exists, skipping.", tagName)
 	}
 
-	createTag(tagName, cfg.TagPrefix)
+	createTag(tagName, cfg.TagPrefix, gitRepo)
 
 	if flagPush {
-		pushTags()
+		pushTags(gitRepo)
 	}
+
 	exits.WithSuccess("✅ Tag created: %s", tagName)
 }
 
-func runPublish(cfg config.Config, flagYes bool, flagPush bool, flagCheck bool) {
+func runPublish(cfg config.Config, gitRepo *git.GitRepository, flagYes bool, flagPush bool, flagCheck bool) {
 	if flagCheck {
 		passes, relevantFiles, err := changeset.CheckChangesetRequirement(cfg)
 		if err != nil {
@@ -138,13 +136,13 @@ func runPublish(cfg config.Config, flagYes bool, flagPush bool, flagCheck bool) 
 
 	tagName := bumpVersion(cfg)
 	if cfg.Commit.Enabled {
-		commitChanges(tagName, cfg)
+		commitChanges(gitRepo, tagName, cfg)
 	}
 
-	createTag(tagName, cfg.TagPrefix)
+	createTag(tagName, cfg.TagPrefix, gitRepo)
 
 	if flagPush {
-		pushTags()
+		pushTags(gitRepo)
 	}
 
 	exits.WithSuccess("🎉 Published: %s\n", tagName)
@@ -181,57 +179,51 @@ func confirmRelease() {
 	var confirm string
 	fmt.Scanln(&confirm)
 	if confirm != "y" && confirm != "Y" {
-		fmt.Println("❌ Publish cancelled.")
-		os.Exit(2)
+		exits.WithError("❌ Publish cancelled.")
 	}
 }
 
 func bumpVersion(cfg config.Config) string {
 	newVer, err := changeset.ApplyChangesets(cfg)
 	if err != nil {
-		fmt.Println("⚠️", err)
-		os.Exit(1)
+		exits.WithError("⚠️ %v", err)
 	}
+
 	tagName := cfg.TagPrefix + newVer
 	fmt.Printf("✅ Version bumped: %s\n", tagName)
+
 	return tagName
 }
 
-func commitChanges(tagName string, cfg config.Config) {
+func commitChanges(gitRepo *git.GitRepository, tagName string, cfg config.Config) {
 	version := strings.TrimPrefix(tagName, cfg.TagPrefix)
 	commitMessage := config.Render(cfg.Commit.Message, map[string]string{"tag": tagName, "version": version})
 
-	if err := runCmd("git", "add", "-A"); err != nil {
-		fmt.Println("⚠️ No changes to commit.")
-	} else if err := runCmd("git", "commit", "-m", commitMessage); err != nil {
-		fmt.Println("⚠️ No changes to commit.")
+	if err := gitRepo.AddFiles(nil); err != nil {
+		exits.WithGitError("%v", err)
+	} else if err := gitRepo.CommitChanges(commitMessage); err != nil {
+		exits.WithGitError("%v", err)
 	} else {
-		fmt.Printf("✅ Committed release changes: %s\n", commitMessage)
+		exits.WithSuccess("✅ Committed release changes: %s\n", commitMessage)
 	}
 }
 
-func createTag(tagName string, tagPrefix string) {
+func createTag(tagName string, tagPrefix string, gitRepo *git.GitRepository) {
 	message := getChangelogForTag(tagName, tagPrefix)
-	if err := runCmd("git", "tag", "-a", tagName, "-m", message); err != nil {
-		fmt.Println("⚠️ Failed to create tag:", err)
-		os.Exit(3)
+
+	if err := gitRepo.CreateTag(tagName, &message); err != nil {
+		exits.WithError("⚠️ Failed to create tag: %v", err)
 	}
-	fmt.Printf("✅ Git tag %s created\n", tagName)
+
+	exits.WithSuccess("✅ Git tag %s created with message:\n%s", tagName, message)
 }
 
-func pushTags() {
-	if err := runCmd("git", "push", "--follow-tags"); err != nil {
-		fmt.Println("⚠️ Failed to push changes:", err)
-		os.Exit(3)
+func pushTags(gitRepo *git.GitRepository) {
+	if err := gitRepo.PushCommitsAndTags(); err != nil {
+		exits.WithGitError("⚠️ Failed to push changes: %v", err)
 	}
+
 	fmt.Println("✅ Changes pushed with tags")
-}
-
-func runCmd(name string, args ...string) error {
-	cmd := exec.Command(name, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
 }
 
 func getChangelogForTag(tagName string, tagPrefix string) string {
