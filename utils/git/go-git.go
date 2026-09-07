@@ -1,9 +1,12 @@
 package git
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/ChanduBobbili/changesetgoo/utils"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
@@ -14,9 +17,9 @@ type GitRepository struct {
 }
 
 func OpenGitRepo(repoPath *string) (*GitRepository, error) {
-	repo, err := git.PlainOpen(*repoPath)
+	repo, err := git.PlainOpenWithOptions(*repoPath, &git.PlainOpenOptions{DetectDotGit: true})
 	if err != nil {
-		return nil, fmt.Errorf("Failed to open the git repository: %v", err)
+		return nil, fmt.Errorf("failed to open the git repository: %v", err)
 	}
 	return &GitRepository{repo: repo}, nil
 }
@@ -45,6 +48,84 @@ func (g *GitRepository) GetCurrentBranch() (string, error) {
 
 func (g *GitRepository) GetRepoHead() (*plumbing.Reference, error) {
 	return g.repo.Head()
+}
+
+func (g *GitRepository) GetRootCommit() (string, error) {
+	isShallow, err := utils.ExecuteCommandOutput("git", "rev-parse", "--is-shallow-repository")
+	if err == nil && strings.TrimSpace(isShallow) == "true" {
+		return "", fmt.Errorf("repository is shallow; fetch full history before resolving root commit")
+	}
+
+	out, err := utils.ExecuteCommandOutput("git", "rev-list", "--max-parents=0", "HEAD")
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve root commit: %w", err)
+	}
+
+	trimmed := strings.TrimSpace(out)
+	if trimmed == "" {
+		return "", fmt.Errorf("no commits found in repository")
+	}
+
+	parts := strings.Fields(trimmed)
+	if len(parts) == 0 {
+		return "", fmt.Errorf("no commits found in repository")
+	}
+	return parts[0], nil
+}
+
+func (g *GitRepository) DiffTreesFromRefs(fromRef string, toRef string) ([]string, error) {
+	fromHash, err := g.repo.ResolveRevision(plumbing.Revision(fromRef))
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve %s: %w", fromRef, err)
+	}
+	toHash, err := g.repo.ResolveRevision(plumbing.Revision(toRef))
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve %s: %w", toRef, err)
+	}
+
+	fromCommit, err := g.repo.CommitObject(*fromHash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load source commit: %w", err)
+	}
+	toCommit, err := g.repo.CommitObject(*toHash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load target commit: %w", err)
+	}
+
+	fromTree, err := fromCommit.Tree()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load source tree: %w", err)
+	}
+	toTree, err := toCommit.Tree()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load target tree: %w", err)
+	}
+
+	changes, err := fromTree.Diff(toTree)
+	if err != nil {
+		return nil, fmt.Errorf("failed to diff trees: %w", err)
+	}
+
+	files := make([]string, 0, len(changes))
+	seen := make(map[string]struct{}, len(changes))
+	for _, change := range changes {
+		name := ""
+		if change.To.Name != "" {
+			name = change.To.Name
+		} else if change.From.Name != "" {
+			name = change.From.Name
+		}
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		files = append(files, name)
+	}
+
+	return files, nil
 }
 
 // AddFiles adds the specified files to the staging area (index) of the git repository.
@@ -76,7 +157,24 @@ func (g *GitRepository) CommitChanges(message string) error {
 		return fmt.Errorf("failed to get worktree: %w", err)
 	}
 
-	_, err = wt.Commit(message, &git.CommitOptions{})
+	userName, userEmail, err := g.GetGitUser()
+	if err != nil {
+		return fmt.Errorf("failed to get git user: %w", err)
+	}
+	if userName == "" {
+		userName = "changesetgoo"
+	}
+	if userEmail == "" {
+		userEmail = "changesetgoo@cli"
+	}
+
+	_, err = wt.Commit(message, &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  userName,
+			Email: userEmail,
+			When:  time.Now(),
+		},
+	})
 	if err != nil {
 		return fmt.Errorf("failed to commit changes: %w", err)
 	}
@@ -86,7 +184,7 @@ func (g *GitRepository) CommitChanges(message string) error {
 
 func (g *GitRepository) CheckTagExists(tagName string) (bool, error) {
 	_, err := g.repo.Tag(tagName)
-	if err == git.ErrTagNotFound {
+	if errors.Is(err, git.ErrTagNotFound) {
 		return false, nil
 	}
 	if err != nil {
@@ -133,14 +231,7 @@ func (g *GitRepository) CreateTag(tagName string, message *string) error {
 }
 
 func (g *GitRepository) PushCommitsAndTags() error {
-	err := g.repo.Push(&git.PushOptions{
-		Progress:   nil,
-		FollowTags: true,
-	})
-	if err != nil {
-		if err == git.NoErrAlreadyUpToDate {
-			return nil // No new commits or tags to push
-		}
+	if err := utils.ExecuteCommand("git", "push", "--follow-tags"); err != nil {
 		return fmt.Errorf("failed to push commits and tags: %w", err)
 	}
 	return nil

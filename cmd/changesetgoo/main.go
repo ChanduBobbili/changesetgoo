@@ -54,11 +54,11 @@ func main() {
 	case "add":
 		runAdd(cfg, gitRepo)
 	case "version":
-		runVersion(cfg)
+		runVersion(cfg, gitRepo)
 	case "tag":
 		runTag(cfg, gitRepo, *flagPush)
 	case "status":
-		runStatus(cfg)
+		runStatus(cfg, gitRepo)
 	case "publish":
 		runPublish(cfg, gitRepo, *flagYes, *flagPush, *flagCheck)
 	case "--version", "-v":
@@ -67,6 +67,8 @@ func main() {
 		fmt.Printf("Unknown command: %s\n", cmd)
 		exits.WithUsageError(getUsage())
 	}
+
+	exits.WithSuccess("")
 }
 
 func runAdd(cfg config.Config, gitRepo *git.GitRepository) {
@@ -77,13 +79,12 @@ func runAdd(cfg config.Config, gitRepo *git.GitRepository) {
 	exits.WithSuccess("✅ Changeset added")
 }
 
-func runVersion(cfg config.Config) {
-	newVer, err := changeset.ApplyChangesets(cfg)
-	if err != nil {
-		exits.WithError("⚠️ %v", err)
-	}
+func runVersion(cfg config.Config, gitRepo *git.GitRepository) {
+	tagName := bumpVersion(cfg)
 
-	exits.WithSuccess("✅ Version bumped to %s%s", cfg.TagPrefix, newVer)
+	if cfg.Commit.Enabled {
+		commitChanges(gitRepo, tagName, cfg)
+	}
 }
 
 func runTag(cfg config.Config, gitRepo *git.GitRepository, flagPush bool) {
@@ -98,9 +99,9 @@ func runTag(cfg config.Config, gitRepo *git.GitRepository, flagPush bool) {
 		exits.WithError("⚠️ Failed to check tag existence: %v", err)
 	} else if tagExists {
 		exits.WithInfo("⚠️ Tag %s already exists, skipping.", tagName)
+	} else {
+		createTag(tagName, cfg.TagPrefix, gitRepo)
 	}
-
-	createTag(tagName, cfg.TagPrefix, gitRepo)
 
 	if flagPush {
 		pushTags(gitRepo)
@@ -111,7 +112,7 @@ func runTag(cfg config.Config, gitRepo *git.GitRepository, flagPush bool) {
 
 func runPublish(cfg config.Config, gitRepo *git.GitRepository, flagYes bool, flagPush bool, flagCheck bool) {
 	if flagCheck {
-		passes, relevantFiles, err := changeset.CheckChangesetRequirement(cfg)
+		passes, relevantFiles, err := changeset.CheckChangesetRequirement(gitRepo, cfg)
 		if err != nil {
 			exits.WithError("⚠️ Failed to validate changeset requirement: %v", err)
 		}
@@ -139,7 +140,13 @@ func runPublish(cfg config.Config, gitRepo *git.GitRepository, flagYes bool, fla
 		commitChanges(gitRepo, tagName, cfg)
 	}
 
-	createTag(tagName, cfg.TagPrefix, gitRepo)
+	if tagExists, err := gitRepo.CheckTagExists(tagName); err != nil {
+		exits.WithError("⚠️ Failed to check tag existence: %v", err)
+	} else if tagExists {
+		exits.WithInfo("⚠️ Tag %s already exists, skipping.", tagName)
+	} else {
+		createTag(tagName, cfg.TagPrefix, gitRepo)
+	}
 
 	if flagPush {
 		pushTags(gitRepo)
@@ -148,8 +155,8 @@ func runPublish(cfg config.Config, gitRepo *git.GitRepository, flagYes bool, fla
 	exits.WithSuccess("🎉 Published: %s\n", tagName)
 }
 
-func runStatus(cfg config.Config) {
-	passes, relevantFiles, err := changeset.CheckChangesetRequirement(cfg)
+func runStatus(cfg config.Config, gitRepo *git.GitRepository) {
+	passes, relevantFiles, err := changeset.CheckChangesetRequirement(gitRepo, cfg)
 	if err != nil {
 		exits.WithError("⚠️ Failed to validate changeset requirement: %v", err)
 	}

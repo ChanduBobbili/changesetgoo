@@ -3,7 +3,6 @@ package changeset
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 
@@ -11,29 +10,9 @@ import (
 	"github.com/ChanduBobbili/changesetgoo/utils/git"
 )
 
-// GetChangedFiles returns the files changed relative to baseBranch.
-func GetChangedFiles(baseBranch string) ([]string, error) {
-	cmd := exec.Command("git", "diff", "--name-only", baseBranch+"...HEAD")
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("failed to diff against %s: %w", baseBranch, err)
-	}
-
-	trimmed := strings.TrimSpace(string(out))
-	if trimmed == "" {
-		return []string{}, nil
-	}
-
-	lines := strings.Split(trimmed, "\n")
-	files := make([]string, 0, len(lines))
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			files = append(files, line)
-		}
-	}
-
-	return files, nil
+// GetChangedFiles returns the files changed between a ref and HEAD.
+func GetChangedFiles(gitRepo *git.GitRepository, ref string) ([]string, error) {
+	return gitRepo.DiffTreesFromRefs(ref, "HEAD")
 }
 
 func ResolveChangeRef(gitRepo *git.GitRepository, cfg config.Config) (string, error) {
@@ -42,34 +21,29 @@ func ResolveChangeRef(gitRepo *git.GitRepository, cfg config.Config) (string, er
 		return "", err
 	}
 
-	// feature branch — compare against base branch
 	if branch != cfg.BaseBranch {
 		return cfg.BaseBranch, nil
 	}
 
-	// on base branch — compare against latest released tag.
 	version, err := GetLatestVersion()
 	if err != nil {
 		return "", err
 	}
 	tag := cfg.TagPrefix + version
 
-	verifyCmd := exec.Command("git", "rev-parse", "--verify", "--quiet", tag)
-	if err := verifyCmd.Run(); err == nil {
+	exists, err := gitRepo.CheckTagExists(tag)
+	if err != nil {
+		return "", fmt.Errorf("failed to check tag %s: %w", tag, err)
+	}
+	if exists {
 		return tag, nil
 	}
 
-	// No tag yet — fall back to the repo's root commit.
-	rootOut, err := exec.Command("git", "rev-list", "--max-parents=0", "HEAD").Output()
+	rootCommit, err := gitRepo.GetRootCommit()
 	if err != nil {
 		return "", fmt.Errorf("no tag %s found and failed to resolve root commit: %w", tag, err)
 	}
-	rootCommits := strings.Fields(strings.TrimSpace(string(rootOut)))
-	if len(rootCommits) == 0 {
-		return "", fmt.Errorf("no tag %s found and no root commit resolved", tag)
-	}
-	// Use the first root commit if there are multiple (unrelated histories).
-	return rootCommits[0], nil
+	return rootCommit, nil
 }
 
 func HasChangesForChangeset(gitRepo *git.GitRepository, cfg config.Config) (bool, error) {
@@ -81,8 +55,13 @@ func HasChangesForChangeset(gitRepo *git.GitRepository, cfg config.Config) (bool
 }
 
 // GetRelevantChangedFiles returns changed files matching ChangedFilePatterns.
-func GetRelevantChangedFiles(cfg config.Config) ([]string, error) {
-	files, err := GetChangedFiles(cfg.BaseBranch)
+func GetRelevantChangedFiles(gitRepo *git.GitRepository, cfg config.Config) ([]string, error) {
+	ref, err := ResolveChangeRef(gitRepo, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	files, err := GetChangedFiles(gitRepo, ref)
 	if err != nil {
 		return nil, err
 	}
@@ -153,8 +132,8 @@ func HasPendingChangesets(changesDir string) (bool, error) {
 
 // CheckChangesetRequirement enforces changedFilePatterns semantics for CI-style
 // checks. It returns whether the check passes and the relevant matched files.
-func CheckChangesetRequirement(cfg config.Config) (bool, []string, error) {
-	relevantFiles, err := GetRelevantChangedFiles(cfg)
+func CheckChangesetRequirement(gitRepo *git.GitRepository, cfg config.Config) (bool, []string, error) {
+	relevantFiles, err := GetRelevantChangedFiles(gitRepo, cfg)
 	if err != nil {
 		return false, nil, err
 	}
