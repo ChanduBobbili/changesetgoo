@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,42 +12,37 @@ import (
 	"github.com/ChanduBobbili/changesetgoo/config"
 	"github.com/ChanduBobbili/changesetgoo/constants"
 	"github.com/ChanduBobbili/changesetgoo/enums"
-)
-
-var (
-	flagYes  bool
-	flagPush bool
-	flagCheck bool
+	"github.com/ChanduBobbili/changesetgoo/utils/exits"
+	"github.com/ChanduBobbili/changesetgoo/utils/git"
 )
 
 func main() {
-	// Default values for flags
-	flagYes = false
-	flagPush = false
-	flagCheck = false
+	// Define command-line flags
+	repoPath := flag.String("repo", ".", "Path to the target git repository")
+	flagYes := flag.Bool("yes", false, "Auto-confirm publish without prompting")
+	flagPush := flag.Bool("push", false, "Push changes after publishing")
+	flagCheck := flag.Bool("check", false, "Check changeset requirements")
+
+	// Custom usage function to display help
+	flag.Usage = func() {
+		exits.WithInfo(getUsage())
+	}
+	// Parse command-line flags
+	flag.Parse()
 
 	args := os.Args[1:]
 	if len(args) < 1 {
-		printUsage()
-		os.Exit(1)
+		exits.WithInfo(getUsage())
 	}
 
-	// First arg is the subcommand
+	// Open the git repository
+	gitRepo, err := git.OpenGitRepo(repoPath)
+	if err != nil {
+		exits.WithGitError("%v", err)
+	}
+
+	// First arg is the command
 	cmd := args[0]
-
-	// Parse flags that appear after the subcommand
-	for _, arg := range args[1:] {
-		switch arg {
-		case "--push":
-			flagPush = true
-		case "--yes":
-			flagYes = true
-		case "--check":
-			flagCheck = true
-		default:
-			// If it's unknown, ignore or handle positional args
-		}
-	}
 
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -54,62 +50,57 @@ func main() {
 		cfg = config.Defaults()
 	}
 
-	// Handle subcommands
+	// Handle commands
 	switch cmd {
 	case "add":
 		runAdd(cfg)
 	case "version":
 		runVersion(cfg)
 	case "tag":
-		runTag(cfg)
+		runTag(cfg, *flagPush)
 	case "status":
 		runStatus(cfg)
 	case "publish":
-		runPublish(cfg)
+		runPublish(cfg, *flagYes, *flagPush, *flagCheck)
 	case "--version", "-v":
 		printCLIVersion()
 	case "help", "--help", "-h":
-		printUsage()
-		os.Exit(0)
+		exits.WithInfo(getUsage())
 	default:
 		fmt.Printf("Unknown command: %s\n", cmd)
-		printUsage()
-		os.Exit(2)
+		exits.WithUsageError(getUsage())
 	}
 }
 
 func runAdd(cfg config.Config) {
 	if err := changeset.InteractiveAdd(cfg); err != nil {
-		fmt.Println("⚠️ Failed to add changeset:", err)
-		os.Exit(1)
+		exits.WithError("⚠️ Failed to add changeset: %v", err)
 	}
-	fmt.Println("✅ Changeset added")
-	os.Exit(0)
+	exits.WithSuccess("✅ Changeset added")
 }
 
 func runVersion(cfg config.Config) {
 	newVer, err := changeset.ApplyChangesets(cfg)
 	if err != nil {
-		fmt.Println("⚠️", err)
-		os.Exit(1)
+		exits.WithError("⚠️ %v", err)
 	}
-	fmt.Printf("✅ Version bumped to %s%s\n", cfg.TagPrefix, newVer)
-	os.Exit(0)
+	exits.WithSuccess("✅ Version bumped to %s%s", cfg.TagPrefix, newVer)
 }
 
-func runTag(cfg config.Config) {
+func runTag(cfg config.Config, flagPush bool) {
 	version, err := changeset.GetLatestVersion()
 	if err != nil {
-		fmt.Println("⚠️ Failed to get latest version:", err)
-		os.Exit(1)
+		exits.WithError("⚠️ Failed to get latest version: %v", err)
 	}
 
 	tagName := cfg.TagPrefix + version
 	checkCmd := exec.Command("git", "tag", "--list", tagName)
-	out, _ := checkCmd.Output()
+	out, err := checkCmd.Output()
+	if err != nil {
+		exits.WithError("⚠️ Failed to check existing tags: %v", err)
+	}
 	if string(out) != "" {
-		fmt.Printf("⚠️ Tag %s already exists, skipping.\n", tagName)
-		os.Exit(0)
+		exits.WithInfo("⚠️ Tag %s already exists, skipping.", tagName)
 	}
 
 	createTag(tagName, cfg.TagPrefix)
@@ -117,30 +108,26 @@ func runTag(cfg config.Config) {
 	if flagPush {
 		pushTags()
 	}
-	os.Exit(0)
+	exits.WithSuccess("✅ Tag created: %s", tagName)
 }
 
-func runPublish(cfg config.Config) {
+func runPublish(cfg config.Config, flagYes bool, flagPush bool, flagCheck bool) {
 	if flagCheck {
 		passes, relevantFiles, err := changeset.CheckChangesetRequirement(cfg)
 		if err != nil {
-			fmt.Println("⚠️ Failed to validate changeset requirement:", err)
-			os.Exit(1)
+			exits.WithError("⚠️ Failed to validate changeset requirement: %v", err)
 		}
 		if !passes {
-			fmt.Println("⚠️ Relevant changes detected but no pending changeset was found")
-			fmt.Println("Run: changesetgoo add")
 			for _, file := range relevantFiles {
 				fmt.Println("  -", file)
 			}
-			os.Exit(1)
+			exits.WithInfo("⚠️ Relevant changes detected but no pending changeset was found\n Run: changesetgoo add")
 		}
 	}
 
 	nextVer, bumpType, err := changeset.CalculateNextVersion(cfg)
 	if err != nil {
-		fmt.Println("⚠️", err)
-		os.Exit(1)
+		exits.WithError("⚠️ Failed to calculate next version: %v", err)
 	}
 
 	previewRelease(nextVer, bumpType, cfg.TagPrefix)
@@ -160,32 +147,26 @@ func runPublish(cfg config.Config) {
 		pushTags()
 	}
 
-	fmt.Printf("🎉 Published: %s\n", tagName)
-	os.Exit(0)
+	exits.WithSuccess("🎉 Published: %s\n", tagName)
 }
 
 func runStatus(cfg config.Config) {
 	passes, relevantFiles, err := changeset.CheckChangesetRequirement(cfg)
 	if err != nil {
-		fmt.Println("⚠️ Failed to validate changeset requirement:", err)
-		os.Exit(1)
+		exits.WithError("⚠️ Failed to validate changeset requirement: %v", err)
 	}
 
 	if passes && len(relevantFiles) == 0 {
-		fmt.Printf("✅ No changes matched changedFilePatterns against %s\n", cfg.BaseBranch)
-		os.Exit(0)
+		exits.WithSuccess("✅ No changes matched changedFilePatterns against %s\n", cfg.BaseBranch)
 	}
 	if passes {
-		fmt.Println("✅ Relevant changes detected and pending changesets are present")
-		os.Exit(0)
+		exits.WithSuccess("✅ Relevant changes detected and pending changesets are present")
 	}
 
-	fmt.Println("⚠️ Relevant changes detected but no pending changeset was found")
-	fmt.Println("Run: changesetgoo add")
 	for _, file := range relevantFiles {
 		fmt.Println("  -", file)
 	}
-	os.Exit(1)
+	exits.WithInfo("⚠️ Relevant changes detected but no pending changeset was found\n Run: changesetgoo add")
 }
 
 func previewRelease(nextVer string, bumpType enums.ReleaseType, tagPrefix string) {
@@ -274,20 +255,23 @@ func getChangelogForTag(tagName string, tagPrefix string) string {
 	return baseMessage // Return base message if no specific changelog is found
 }
 
-func printUsage() {
-	fmt.Println("Usage: changesetgoo <command> [flags]")
-	fmt.Println("\nCommands:")
-	fmt.Println("  add         Add a new changeset interactively")
-	fmt.Println("  version     Apply pending changesets and bump version")
-	fmt.Println("  tag         Create a git tag for the latest version")
-	fmt.Println("  status      Check changed files against changedFilePatterns")
-	fmt.Println("  publish     Bump version, commit, and create a tag")
-	fmt.Println("  help        Show this help message")
-	fmt.Println("  --version, -v    Show changesetgoo CLI version")
-	fmt.Println("\nFlags:")
-	fmt.Println("  --yes            Auto-confirm publish without prompting")
-	fmt.Println("  --push           Auto-push commits and tags after publish")
-	fmt.Println("  --check          Enforce changedFilePatterns changeset requirement")
+func getUsage() string {
+	return `Usage: changesetgoo <command> [flags]
+
+Commands:
+  add        Add a new changeset interactively
+  version    Apply pending changesets and bump version
+  tag        Create a git tag for the latest version
+  status     Check changed files against changedFilePatterns
+  publish    Bump version, commit, and create a tag
+  help       Show this help message
+  --version, -v    Show changesetgoo CLI version
+
+Flags:
+  --yes            Auto-confirm publish without prompting
+  --push           Auto-push commits and tags after publish
+  --check          Enforce changedFilePatterns changeset requirement
+`
 }
 
 func printCLIVersion() {

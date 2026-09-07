@@ -35,6 +35,23 @@ func GetChangedFiles(baseBranch string) ([]string, error) {
 	return files, nil
 }
 
+// GetRelevantChangedFiles returns changed files matching ChangedFilePatterns.
+func GetRelevantChangedFiles(cfg config.Config) ([]string, error) {
+	files, err := GetChangedFiles(cfg.BaseBranch)
+	if err != nil {
+		return nil, err
+	}
+
+	relevant := make([]string, 0)
+	for _, file := range files {
+		if MatchesAnyPattern(file, cfg.ChangedFilePatterns) {
+			relevant = append(relevant, file)
+		}
+	}
+
+	return relevant, nil
+}
+
 // MatchesAnyPattern reports whether a file matches at least one pattern.
 func MatchesAnyPattern(file string, patterns []string) bool {
 	for _, pattern := range patterns {
@@ -68,23 +85,6 @@ func globToRegexp(pattern string) *regexp.Regexp {
 
 	b.WriteString("$")
 	return regexp.MustCompile(b.String())
-}
-
-// GetRelevantChangedFiles returns changed files matching ChangedFilePatterns.
-func GetRelevantChangedFiles(cfg config.Config) ([]string, error) {
-	files, err := GetChangedFiles(cfg.BaseBranch)
-	if err != nil {
-		return nil, err
-	}
-
-	relevant := make([]string, 0)
-	for _, file := range files {
-		if MatchesAnyPattern(file, cfg.ChangedFilePatterns) {
-			relevant = append(relevant, file)
-		}
-	}
-
-	return relevant, nil
 }
 
 // HasPendingChangesets reports whether there are any pending .md changesets.
