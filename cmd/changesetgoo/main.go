@@ -13,6 +13,7 @@ import (
 	"github.com/ChanduBobbili/changesetgoo/enums"
 	"github.com/ChanduBobbili/changesetgoo/utils/exits"
 	"github.com/ChanduBobbili/changesetgoo/utils/git"
+	"github.com/manifoldco/promptui"
 )
 
 func main() {
@@ -129,11 +130,8 @@ func runPublish(cfg config.Config, gitRepo *git.GitRepository, flagYes bool, fla
 		exits.WithError("⚠️ Failed to calculate next version: %v", err)
 	}
 
-	previewRelease(nextVer, bumpType, cfg.TagPrefix)
-
-	if !flagYes {
-		confirmRelease()
-	}
+	// Preview and confirm the release interactively
+	previewAndConfirmReleaseInteractive(nextVer, bumpType, cfg.TagPrefix, flagYes)
 
 	tagName := bumpVersion(cfg)
 	if cfg.Commit.Enabled {
@@ -174,18 +172,23 @@ func runStatus(cfg config.Config, gitRepo *git.GitRepository) {
 	exits.WithInfo("⚠️ Relevant changes detected but no pending changeset was found\n Run: changesetgoo add")
 }
 
-func previewRelease(nextVer string, bumpType enums.ReleaseType, tagPrefix string) {
+func previewAndConfirmReleaseInteractive(nextVer string, bumpType enums.ReleaseType, tagPrefix string, flagYes bool) {
 	fmt.Println("📦 Release preview")
 	fmt.Println("------------------")
 	fmt.Printf(" Pending bump : %s\n", bumpType)
 	fmt.Printf(" Next version : %s%s\n\n", tagPrefix, nextVer)
-}
 
-func confirmRelease() {
-	fmt.Print("Do you want to continue with this release? (y/n): ")
-	var confirm string
-	fmt.Scanln(&confirm)
-	if confirm != "y" && confirm != "Y" {
+	if flagYes {
+		return
+	}
+
+	prompt := promptui.Select{
+		Label: "Do you want to continue with this release?",
+		Items: []string{"Yes", "No"},
+	}
+
+	_, result, err := prompt.Run()
+	if err != nil || result == "No" {
 		exits.WithError("❌ Publish cancelled.")
 	}
 }
