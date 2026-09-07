@@ -52,7 +52,7 @@ func main() {
 	// Handle commands
 	switch cmd {
 	case "add":
-		runAdd(cfg)
+		runAdd(cfg, gitRepo)
 	case "version":
 		runVersion(cfg)
 	case "tag":
@@ -69,8 +69,8 @@ func main() {
 	}
 }
 
-func runAdd(cfg config.Config) {
-	if err := changeset.InteractiveAdd(cfg); err != nil {
+func runAdd(cfg config.Config, gitRepo *git.GitRepository) {
+	if err := changeset.InteractiveAdd(gitRepo, cfg); err != nil {
 		exits.WithError("⚠️ Failed to add changeset: %v", err)
 	}
 

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/ChanduBobbili/changesetgoo/config"
+	"github.com/ChanduBobbili/changesetgoo/utils/git"
 )
 
 // GetChangedFiles returns the files changed relative to baseBranch.
@@ -33,6 +34,50 @@ func GetChangedFiles(baseBranch string) ([]string, error) {
 	}
 
 	return files, nil
+}
+
+func ResolveChangeRef(gitRepo *git.GitRepository, cfg config.Config) (string, error) {
+	branch, err := gitRepo.GetCurrentBranch()
+	if err != nil {
+		return "", err
+	}
+
+	// feature branch — compare against base branch
+	if branch != cfg.BaseBranch {
+		return cfg.BaseBranch, nil
+	}
+
+	// on base branch — compare against latest released tag.
+	version, err := GetLatestVersion()
+	if err != nil {
+		return "", err
+	}
+	tag := cfg.TagPrefix + version
+
+	verifyCmd := exec.Command("git", "rev-parse", "--verify", "--quiet", tag)
+	if err := verifyCmd.Run(); err == nil {
+		return tag, nil
+	}
+
+	// No tag yet — fall back to the repo's root commit.
+	rootOut, err := exec.Command("git", "rev-list", "--max-parents=0", "HEAD").Output()
+	if err != nil {
+		return "", fmt.Errorf("no tag %s found and failed to resolve root commit: %w", tag, err)
+	}
+	rootCommits := strings.Fields(strings.TrimSpace(string(rootOut)))
+	if len(rootCommits) == 0 {
+		return "", fmt.Errorf("no tag %s found and no root commit resolved", tag)
+	}
+	// Use the first root commit if there are multiple (unrelated histories).
+	return rootCommits[0], nil
+}
+
+func HasChangesForChangeset(gitRepo *git.GitRepository, cfg config.Config) (bool, error) {
+	ref, err := ResolveChangeRef(gitRepo, cfg)
+	if err != nil {
+		return false, err
+	}
+	return gitRepo.HasChangesSinceRef(ref)
 }
 
 // GetRelevantChangedFiles returns changed files matching ChangedFilePatterns.
