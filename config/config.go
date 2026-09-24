@@ -69,7 +69,7 @@ func Defaults() Config {
 			Template: "## {{version}}",
 		},
 		Commit: CommitConfig{
-			Enabled: false,
+			Enabled: true,
 			Message: "chore 🚀: release {{tag}}",
 		},
 		BaseBranch:          "main",

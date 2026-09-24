@@ -24,8 +24,14 @@ func ApplyChangesets(cfg config.Config) (string, error) {
 
 	bumpType := determineBumpType(majors, minors, patches)
 
-	current, _ := GetLatestVersion()
-	newVersion, _ := BumpVersion(current, bumpType)
+	current, err := GetLatestVersion()
+	if err != nil {
+		return "", err
+	}
+	newVersion, err := BumpVersion(current, bumpType)
+	if err != nil {
+		return "", err
+	}
 
 	if cfg.Changelog.Enabled {
 		if err := updateChangelog(newVersion, majors, minors, patches, cfg); err != nil {
