@@ -114,7 +114,7 @@ func runTag(cfg config.Config, gitRepo *git.GitRepository, flagPush bool) {
 		pushTags(gitRepo)
 	}
 
-	exits.WithSuccess("✅ Tag created: %s", tagName)
+	exits.WithSuccess("")
 }
 
 func runPublish(cfg config.Config, gitRepo *git.GitRepository, flagYes bool, flagPush bool, flagCheck bool) {
@@ -220,7 +220,7 @@ func commitChanges(gitRepo *git.GitRepository, tagName string, cfg config.Config
 	} else if err := gitRepo.CommitChanges(commitMessage); err != nil {
 		exits.WithGitError("%v", err)
 	} else {
-		exits.WithSuccess("✅ Committed release changes: %s\n", commitMessage)
+		fmt.Printf("✅ Committed release changes: %s\n", commitMessage)
 	}
 }
 
@@ -231,7 +231,7 @@ func createTag(tagName string, tagPrefix string, gitRepo *git.GitRepository) {
 		exits.WithError("⚠️ Failed to create tag: %v", err)
 	}
 
-	exits.WithSuccess("✅ Git tag %s created with message:\n%s", tagName, message)
+	fmt.Printf("✅ Git tag %s created with message:\n%s", tagName, message)
 }
 
 func pushTags(gitRepo *git.GitRepository) {

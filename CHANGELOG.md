@@ -1,3 +1,18 @@
+## 2.0.0
+
+### Major Changes
+
+- Add configuration support for release workflows, including configurable changeset paths, tag prefixes, issue formatting, changelog settings, and publish-time commit behavior.
+- Introduced `changedFilePattern` to allow filtering of changed files against user-defined patterns, ensuring version bumps are only triggered by relevant file modifications.
+
+### Minor Changes
+
+- Migrated internal Git operations from `os/exec` shell commands to the `go-git` library to make the CLI fully self-contained and cross-platform compatible.
+
+### Patch Changes
+
+- Migrate description input to `chzyer/readline` to fix multi-print pasting bugs, add interrupt handling for clean exits, and resolve filepath variable shadowing.
+
 ## 1.2.1
 
 ### Patch Changes
