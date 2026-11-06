@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"runtime/debug"
 	"strings"
 
 	"github.com/ChanduBobbili/changesetgoo/changeset"
 	"github.com/ChanduBobbili/changesetgoo/config"
-	"github.com/ChanduBobbili/changesetgoo/constants"
 	"github.com/ChanduBobbili/changesetgoo/enums"
 	"github.com/ChanduBobbili/changesetgoo/utils/exits"
 	"github.com/ChanduBobbili/changesetgoo/utils/git"
@@ -22,6 +22,8 @@ func main() {
 	flagYes := flag.Bool("yes", false, "Auto-confirm publish without prompting")
 	flagPush := flag.Bool("push", false, "Push changes after publishing")
 	flagCheck := flag.Bool("check", false, "Check changeset requirements")
+	flagVersion := flag.Bool("version", false, "Show changesetgoo CLI version")
+	flagV := flag.Bool("v", false, "Show changesetgoo CLI version")
 
 	// Custom usage function to display help
 	flag.Usage = func() {
@@ -29,6 +31,12 @@ func main() {
 	}
 	// Parse command-line flags
 	flag.Parse()
+
+	// Handle version flags early
+	if *flagVersion || *flagV {
+		printCLIVersion()
+		exits.WithSuccess("")
+	}
 
 	args := os.Args[1:]
 	if len(args) < 1 {
@@ -62,8 +70,6 @@ func main() {
 		runStatus(cfg, gitRepo)
 	case "publish":
 		runPublish(cfg, gitRepo, *flagYes, *flagPush, *flagCheck)
-	case "--version", "-v":
-		printCLIVersion()
 	default:
 		fmt.Printf("Unknown command: %s\n", cmd)
 		exits.WithUsageError(getUsage())
@@ -277,5 +283,11 @@ Flags:
 }
 
 func printCLIVersion() {
-	fmt.Println("changesetgoo", constants.CliVersion)
+	version := "dev"
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" {
+		if info.Main.Version != "(devel)" {
+			version = info.Main.Version
+		}
+	}
+	fmt.Println("changesetgoo", version)
 }
